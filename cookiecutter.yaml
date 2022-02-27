@@ -1,0 +1,12 @@
+default_context:
+    municipality: "Ann Arbor"
+    governing_body_type: "city council"
+    municipality_slug: "ann-arbor"
+    python_municipality_slug: "ann_arbor"
+    infrastructure_slug: "cdp-ann-arbor-mytqnzzk"
+    maintainer_or_org_full_name: "Adam Goodman"
+    hosting_github_username_or_org: "akgood"
+    hosting_github_repo_name: "cdp-ann-arbor"
+    hosting_github_url: "https://github.com/akgood/cdp-ann-arbor"
+    hosting_web_app_address: "https://akgood.github.io/cdp-ann-arbor"
+    firestore_region: "us-central"
