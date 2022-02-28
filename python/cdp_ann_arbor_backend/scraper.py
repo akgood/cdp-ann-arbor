@@ -61,7 +61,7 @@ class AnnArborScraper(LegistarScraper):
             vote_approve_pattern="approve|favor|yes|yea",
             vote_reject_pattern="reject|oppose|no|nay",
             matter_in_progress_pattern=r"heard|read|filed|held|(?:in.*com+it+ee)|lay on table",
-            matter_rejected_pattern = r"rejected|dropped|defeated"
+            matter_rejected_pattern=r"rejected|dropped|defeated",
         )
 
     def get_content_uris(self, legistar_ev: Dict) -> List[ContentURIs]:
@@ -134,12 +134,15 @@ class AnnArborScraper(LegistarScraper):
 
         try:
             vod_url = vod_info["vod"]["url"]
-            vod_caption_url = "{}/captions.vtt".format(vod_url.rsplit("/", maxsplit=1)[0])
+            vod_caption_url = "{}/captions.vtt".format(
+                vod_url.rsplit("/", maxsplit=1)[0]
+            )
         except KeyError:
             log.debug("Malformed vod info")
             return []
 
         return [ContentURIs(vod_url, vod_caption_url)]
+
 
 def get_events(
     from_dt: datetime,
