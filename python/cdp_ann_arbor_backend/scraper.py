@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from datetime import datetime
+
 import logging
 import json
 from typing import Dict, List, Optional
@@ -8,7 +10,7 @@ from urllib.request import urlopen
 from urllib.parse import urlparse
 from pathlib import Path
 
-from cdp_backend.pipeline.ingestion_models import Person
+from cdp_backend.pipeline.ingestion_models import Person, EventIngestionModel
 
 from cdp_scrapers.legistar_utils import (
     LegistarScraper,
