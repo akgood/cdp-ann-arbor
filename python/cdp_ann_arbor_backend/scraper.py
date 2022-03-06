@@ -10,12 +10,31 @@ from urllib.request import urlopen
 from urllib.parse import urlparse
 from pathlib import Path
 
-from cdp_backend.pipeline.ingestion_models import Person, EventIngestionModel
+from cdp_backend.pipeline.ingestion_models import (
+    Person,
+    EventIngestionModel,
+    MinutesItem,
+)
 
 from cdp_scrapers.legistar_utils import (
     LegistarScraper,
+    LEGISTAR_EV_INDEX,
+    LEGISTAR_EV_VOTES,
+    LEGISTAR_MINUTE_NAME,
+    LEGISTAR_EV_MINUTE_DECISION,
+    LEGISTAR_MINUTE_EXT_ID,
+    LEGISTAR_VOTE_VAL_NAME,
+    LEGISTAR_VOTE_VAL_ID,
+    VoteDecision,
+    EventMinutesItem,
+    EventMinutesItemDecision,
+    LEGISTAR_EV_ATTACHMENTS,
+    Vote,
+    LEGISTAR_VOTE_EXT_ID,
+    LEGISTAR_VOTE_PERSONS,
 )
 from cdp_scrapers.types import ContentURIs
+from cdp_scrapers.scraper_utils import str_simplified, reduced_list
 
 ###############################################################################
 
@@ -64,6 +83,115 @@ class AnnArborScraper(LegistarScraper):
             vote_reject_pattern="reject|oppose|no|nay",
             matter_in_progress_pattern=r"heard|read|filed|held|(?:in.*com+it+ee)|lay on table",
             matter_rejected_pattern=r"rejected|dropped|defeated",
+        )
+
+    # def get_minutes_item(self, legistar_ev_item: Dict) -> Optional[MinutesItem]:
+    #     """
+    #     Return MinutesItem from parts of Legistar API EventItem.
+    #     Parameters
+    #     ----------
+    #     legistar_ev_item: Dict
+    #         Legistar API EventItem
+    #     Returns
+    #     -------
+    #     minutes_item: Optional[MinutesItem]
+    #         None if could not get nonempty MinutesItem.name from EventItem.
+    #     """
+
+    #     minutes_item_name_parts = [
+    #         str_simplified(legistar_ev_item["EventItemAgendaNumber"]),
+    #         str_simplified(legistar_ev_item[LEGISTAR_MINUTE_NAME]),
+    #     ]
+
+    #     return self.get_none_if_empty(
+    #         MinutesItem(
+    #             external_source_id=str(legistar_ev_item[LEGISTAR_MINUTE_EXT_ID]),
+    #             name=" ".join(p for p in minutes_item_name_parts if p),
+    #         )
+    #     )
+
+    def get_votes(
+        self, legistar_votes: List[Dict], minutes_item_decision: Optional[str]
+    ) -> Optional[List[Vote]]:
+        """
+        Override parent class to pass in minutes_item_decision
+        """
+
+        votes = reduced_list(
+            [
+                self.get_none_if_empty(
+                    Vote(
+                        decision=self.get_vote_decision(vote, minutes_item_decision),
+                        external_source_id=str(vote[LEGISTAR_VOTE_EXT_ID]),
+                        person=self.get_person(vote[LEGISTAR_VOTE_PERSONS]),
+                    )
+                )
+                for vote in legistar_votes
+            ]
+        )
+        ###asdf
+        logging.debug("votes: {}".format(votes))
+        return votes
+
+    def get_vote_decision(
+        self, legistar_vote: Dict, minutes_item_decision: Optional[str]
+    ) -> Optional[str]:
+        """
+        In Ann Arbor, many votes are taken on "voice vote" rather than "roll call",
+        in which case individual CM votes aren't recorded / show up as "null". (It
+        appears that absent CMs still have an "absent" vote recorded in these cases).
+
+        This procedure is usually reserved for unanimous actions, so we'll assume
+        in these cases that all "null" votes are consistent with the overall outcome.
+        """
+        if (
+            legistar_vote[LEGISTAR_VOTE_VAL_NAME] is None
+            and legistar_vote[LEGISTAR_VOTE_VAL_ID] is None
+        ):
+            if minutes_item_decision == EventMinutesItemDecision.PASSED:
+                return VoteDecision.APPROVE
+            elif minutes_item_decision == EventMinutesItemDecision.FAILED:
+                return VoteDecision.REJECT
+
+        return super().get_vote_decision(legistar_vote)
+
+    def get_event_minutes(
+        self, legistar_ev_items: List[Dict]
+    ) -> Optional[List[EventMinutesItem]]:
+        """
+        Override parent class to pass the minutes_item_decision into get_votes()
+        """
+        return reduced_list(
+            [
+                self.get_none_if_empty(
+                    self.fix_event_minutes(
+                        # if minutes_item contains unimportant data,
+                        # just make the entire EventMinutesItem = None
+                        self.filter_event_minutes(
+                            EventMinutesItem(
+                                index=item[LEGISTAR_EV_INDEX],
+                                minutes_item=self.get_minutes_item(item),
+                                votes=self.get_votes(
+                                    item[LEGISTAR_EV_VOTES],
+                                    self.get_minutes_item_decision(
+                                        item[LEGISTAR_EV_MINUTE_DECISION]
+                                    ),
+                                ),
+                                matter=self.get_matter(item),
+                                decision=self.get_minutes_item_decision(
+                                    item[LEGISTAR_EV_MINUTE_DECISION]
+                                ),
+                                supporting_files=self.get_event_supporting_files(
+                                    item[LEGISTAR_EV_ATTACHMENTS]
+                                ),
+                            )
+                        ),
+                        item,
+                    )
+                )
+                # EventMinutesItem object per member in EventItems
+                for item in legistar_ev_items
+            ]
         )
 
     def get_content_uris(self, legistar_ev: Dict) -> List[ContentURIs]:
