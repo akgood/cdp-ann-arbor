@@ -32,6 +32,8 @@ from cdp_scrapers.legistar_utils import (
     Vote,
     LEGISTAR_VOTE_EXT_ID,
     LEGISTAR_VOTE_PERSONS,
+    LEGISTAR_MATTER_STATUS,
+    MatterStatusDecision
 )
 from cdp_scrapers.types import ContentURIs
 from cdp_scrapers.scraper_utils import str_simplified, reduced_list
@@ -85,30 +87,89 @@ class AnnArborScraper(LegistarScraper):
             matter_rejected_pattern=r"rejected|dropped|defeated",
         )
 
-    # def get_minutes_item(self, legistar_ev_item: Dict) -> Optional[MinutesItem]:
-    #     """
-    #     Return MinutesItem from parts of Legistar API EventItem.
-    #     Parameters
-    #     ----------
-    #     legistar_ev_item: Dict
-    #         Legistar API EventItem
-    #     Returns
-    #     -------
-    #     minutes_item: Optional[MinutesItem]
-    #         None if could not get nonempty MinutesItem.name from EventItem.
-    #     """
+    def get_minutes_item(self, legistar_ev_item: Dict) -> Optional[MinutesItem]:
+        """
+        Return MinutesItem from parts of Legistar API EventItem.
+        Parameters
+        ----------
+        legistar_ev_item: Dict
+            Legistar API EventItem
+        Returns
+        -------
+        minutes_item: Optional[MinutesItem]
+            None if could not get nonempty MinutesItem.name from EventItem.
+        """
 
-    #     minutes_item_name_parts = [
-    #         str_simplified(legistar_ev_item["EventItemAgendaNumber"]),
-    #         str_simplified(legistar_ev_item[LEGISTAR_MINUTE_NAME]),
-    #     ]
+        action_to_present_tense_map = {
+            "Approved": "",
+            "Postponed": "Postpone",
+            "Referred": "Refer"
+        }
 
-    #     return self.get_none_if_empty(
-    #         MinutesItem(
-    #             external_source_id=str(legistar_ev_item[LEGISTAR_MINUTE_EXT_ID]),
-    #             name=" ".join(p for p in minutes_item_name_parts if p),
-    #         )
-    #     )
+        action = str_simplified(legistar_ev_item["EventItemActionName"])
+        normalized_action = action_to_present_tense_map.get(action, action)
+
+        minutes_item_name_parts = [
+            normalized_action,
+            str_simplified(legistar_ev_item["EventItemAgendaNumber"]),
+            str_simplified(legistar_ev_item[LEGISTAR_MINUTE_NAME]),
+        ]
+
+        return self.get_none_if_empty(
+            MinutesItem(
+                external_source_id=str(legistar_ev_item[LEGISTAR_MINUTE_EXT_ID]),
+                name=": ".join(p for p in minutes_item_name_parts if p),
+            )
+        )
+
+    def fix_event_minutes(
+        self, ev_minutes_item: Optional[EventMinutesItem], legistar_ev_item: Dict
+    ) -> Optional[EventMinutesItem]:
+        """
+        Inspect the MinutesItem and Matter in ev_minutes_item.
+        - Move some fields between them to make the information more meaningful.
+        - Enforce matter.result_status when appropriate.
+
+        Parameters
+        ----------
+        ev_minutes_item: Optional[EventMinutesItem]
+            The specific event minutes item to clean.
+            Or None if running this function in a loop with multiple event minutes
+            items and you don't want to clean / the emi was filtered out.
+        legistar_ev_item: Dict
+            The original Legistar EventItem.
+
+        Returns
+        -------
+        cleaned_emi: Optional[EventMinutesItem]
+            The cleaned event minutes item. This can clean both the event minutes item
+            and the attached matter information.
+        """
+        if not ev_minutes_item:
+            return ev_minutes_item
+        # XXX skip the following
+        # if ev_minutes_item.minutes_item and ev_minutes_item.matter:
+        #     # we have both matter and minutes_item
+        #     # - make minutes_item.name the more concise text e.g. "CB 11111"
+        #     # - make minutes_item.description the more descriptive lengthy text
+        #     #   e.g. "AN ORDINANCE related to the..."
+        #     # - make matter.title the same descriptive lengthy text
+        #     ev_minutes_item.minutes_item.description = ev_minutes_item.minutes_item.name
+        #     ev_minutes_item.minutes_item.name = ev_minutes_item.matter.name
+        #     ev_minutes_item.matter.title = ev_minutes_item.minutes_item.description
+
+        # matter.result_status is allowed to be null
+        # only when no votes or Legistar EventItemMatterStatus is null
+        if ev_minutes_item.matter and not ev_minutes_item.matter.result_status:
+            if ev_minutes_item.votes and legistar_ev_item[LEGISTAR_MATTER_STATUS]:
+                # means did not find matter_*_pattern in Legistar EventItemMatterStatus.
+                # default to in progress (as opposed to adopted or rejected)
+                # NOTE: if our matter_*_patterns ARE "complete",
+                #       this clause would hit only because the info from Legistar
+                #       is incomplete or malformed
+                ev_minutes_item.matter.result_status = MatterStatusDecision.IN_PROGRESS
+
+        return ev_minutes_item
 
     def get_votes(
         self, legistar_votes: List[Dict], minutes_item_decision: Optional[str]
