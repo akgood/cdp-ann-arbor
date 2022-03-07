@@ -17,23 +17,23 @@ from cdp_backend.pipeline.ingestion_models import (
 )
 
 from cdp_scrapers.legistar_utils import (
-    LegistarScraper,
-    LEGISTAR_EV_INDEX,
-    LEGISTAR_EV_VOTES,
-    LEGISTAR_MINUTE_NAME,
-    LEGISTAR_EV_MINUTE_DECISION,
-    LEGISTAR_MINUTE_EXT_ID,
-    LEGISTAR_VOTE_VAL_NAME,
-    LEGISTAR_VOTE_VAL_ID,
-    VoteDecision,
-    EventMinutesItem,
-    EventMinutesItemDecision,
     LEGISTAR_EV_ATTACHMENTS,
-    Vote,
+    LEGISTAR_EV_INDEX,
+    LEGISTAR_EV_MINUTE_DECISION,
+    LEGISTAR_EV_VOTES,
+    LEGISTAR_MATTER_STATUS,
+    LEGISTAR_MINUTE_EXT_ID,
+    LEGISTAR_MINUTE_NAME,
     LEGISTAR_VOTE_EXT_ID,
     LEGISTAR_VOTE_PERSONS,
-    LEGISTAR_MATTER_STATUS,
-    MatterStatusDecision
+    LEGISTAR_VOTE_VAL_ID,
+    LEGISTAR_VOTE_VAL_NAME,
+    EventMinutesItem,
+    EventMinutesItemDecision,
+    LegistarScraper,
+    MatterStatusDecision,
+    Vote,
+    VoteDecision,
 )
 from cdp_scrapers.types import ContentURIs
 from cdp_scrapers.scraper_utils import str_simplified, reduced_list
@@ -83,7 +83,9 @@ class AnnArborScraper(LegistarScraper):
             person_aliases=PERSON_ALIASES,
             vote_approve_pattern="approve|favor|yes|yea",
             vote_reject_pattern="reject|oppose|no|nay",
-            matter_in_progress_pattern=r"heard|read|filed|held|(?:in.*com+it+ee)|lay on table",
+            matter_in_progress_pattern=(
+                r"heard|read|filed|held|(?:in.*com+it+ee)|lay on table"
+            ),
             matter_rejected_pattern=r"rejected|dropped|defeated",
         )
 
@@ -103,7 +105,7 @@ class AnnArborScraper(LegistarScraper):
         action_to_present_tense_map = {
             "Approved": "",
             "Postponed": "Postpone",
-            "Referred": "Refer"
+            "Referred": "Refer",
         }
 
         action = str_simplified(legistar_ev_item["EventItemActionName"])
@@ -126,37 +128,10 @@ class AnnArborScraper(LegistarScraper):
         self, ev_minutes_item: Optional[EventMinutesItem], legistar_ev_item: Dict
     ) -> Optional[EventMinutesItem]:
         """
-        Inspect the MinutesItem and Matter in ev_minutes_item.
-        - Move some fields between them to make the information more meaningful.
-        - Enforce matter.result_status when appropriate.
-
-        Parameters
-        ----------
-        ev_minutes_item: Optional[EventMinutesItem]
-            The specific event minutes item to clean.
-            Or None if running this function in a loop with multiple event minutes
-            items and you don't want to clean / the emi was filtered out.
-        legistar_ev_item: Dict
-            The original Legistar EventItem.
-
-        Returns
-        -------
-        cleaned_emi: Optional[EventMinutesItem]
-            The cleaned event minutes item. This can clean both the event minutes item
-            and the attached matter information.
+        Override parent class to not mess with titles and such
         """
         if not ev_minutes_item:
             return ev_minutes_item
-        # XXX skip the following
-        # if ev_minutes_item.minutes_item and ev_minutes_item.matter:
-        #     # we have both matter and minutes_item
-        #     # - make minutes_item.name the more concise text e.g. "CB 11111"
-        #     # - make minutes_item.description the more descriptive lengthy text
-        #     #   e.g. "AN ORDINANCE related to the..."
-        #     # - make matter.title the same descriptive lengthy text
-        #     ev_minutes_item.minutes_item.description = ev_minutes_item.minutes_item.name
-        #     ev_minutes_item.minutes_item.name = ev_minutes_item.matter.name
-        #     ev_minutes_item.matter.title = ev_minutes_item.minutes_item.description
 
         # matter.result_status is allowed to be null
         # only when no votes or Legistar EventItemMatterStatus is null
@@ -190,7 +165,7 @@ class AnnArborScraper(LegistarScraper):
                 for vote in legistar_votes
             ]
         )
-        ###asdf
+
         logging.debug("votes: {}".format(votes))
         return votes
 
