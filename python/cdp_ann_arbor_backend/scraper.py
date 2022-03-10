@@ -38,6 +38,12 @@ from cdp_scrapers.legistar_utils import (
 from cdp_scrapers.types import ContentURIs
 from cdp_scrapers.scraper_utils import str_simplified, reduced_list
 
+# This URL is currently set up to return show ids for government events broadcast
+# within the last 40 days. It may get changed / stop working in the future, though!
+A2_CTN_SEARCH_URL = (
+    "https://reflect-ctn.cablecast.tv/cablecastapi/v1/shows/search/advanced/1187"
+)
+
 ###############################################################################
 
 log = logging.getLogger(__name__)
@@ -230,6 +236,33 @@ class AnnArborScraper(LegistarScraper):
             ]
         )
 
+    def search_ctn_for_meeting(self, legistar_ev: Dict) -> Optional[Dict]:
+        # For now, only processing regular sessions of City Council this way
+        if legistar_ev["EventBodyName"] != "City Council":
+            log.debug("Not a City Council meeting; skipping")
+            return None
+        if "special session" in legistar_ev["EventComment"].lower():
+            log.debug("Not a regular City Council session; skipping...")
+            return None
+
+        with urlopen(A2_CTN_SEARCH_URL) as resp:
+            search_result = json.load(resp)
+
+        event_date = datetime.datetime.fromisoformat(legistar_ev["EventDate"])
+        expected_show_title = event_date.strftime("citycouncil%y%m%d")
+
+        show_ids = search_result["savedShowSearch"]["results"]
+        for show_id in show_ids:
+            with urlopen(
+                f"https://reflect-ctn.cablecast.tv/CablecastAPI/v1/shows/{show_id}"
+            ) as resp:
+                show_info = json.load(resp)
+                if expected_show_title == show_info["title"].lower():
+                    return show_info
+        else:
+            log.debug("Show not found in CTN")
+            return None
+
     def get_content_uris(self, legistar_ev: Dict) -> List[ContentURIs]:
         """
         Return URLs for videos and captions parsed from seattlechannel.org web page
@@ -262,52 +295,45 @@ class AnnArborScraper(LegistarScraper):
                 -> get_video_page_urls(), parse_content_uris()
         """
 
-        media_url = legistar_ev.get("EventMedia")
-        if not media_url:
-            # TODO: scrape CTN directly and try to pattern-match
-            log.debug("No media url in Legistar info")
-            return []
-
         try:
-            parsed_media_url = urlparse(media_url)
-            show_id = parsed_media_url.path.split("/")[-1]
-            show_info_uri = (
-                f"https://reflect-ctn.cablecast.tv/CablecastAPI/v1/shows/{show_id}"
+            media_url = legistar_ev.get("EventMedia")
+            if not media_url:
+                log.debug(
+                    "No media url in Legistar info. Attempting to search CTN directly."
+                )
+                show_info = self.search_ctn_for_meeting(legistar_ev)
+                if show_info is None:
+                    return []
+            else:
+                parsed_media_url = urlparse(media_url)
+                show_id = parsed_media_url.path.split("/")[-1]
+
+                show_info_uri = (
+                    f"https://reflect-ctn.cablecast.tv/CablecastAPI/v1/shows/{show_id}"
+                )
+                with urlopen(show_info_uri) as resp:
+                    show_info = json.load(resp)
+
+            if len(show_info["show"]["vods"]) == 0:
+                log.debug("No vod file available (yet?)")
+                return []
+            vod_id = show_info["show"]["vods"][0]
+
+            vod_info_url = (
+                f"https://reflect-ctn.cablecast.tv/CablecastAPI/v1/vods/{vod_id}"
             )
-        except Exception:
-            log.debug("Failed to parse media_url")
-
-        try:
-            with urlopen(show_info_uri) as resp:
-                show_info = json.loads(resp.read())
-        except Exception:
-            log.debug(f"Failed to open {show_info_uri}")
-            return []
-
-        try:
-            (vod_id,) = show_info["show"]["vods"]
-        except Exception:
-            log.debug("No vod info found")
-            return []
-
-        vod_info_url = f"https://reflect-ctn.cablecast.tv/CablecastAPI/v1/vods/{vod_id}"
-        try:
             with urlopen(vod_info_url) as resp:
-                vod_info = json.loads(resp.read())
-        except Exception:
-            log.debug(f"Failed to open {vod_info_url}")
-            return []
+                vod_info = json.load(resp)
 
-        try:
             vod_url = vod_info["vod"]["url"]
             vod_caption_url = "{}/captions.vtt".format(
                 vod_url.rsplit("/", maxsplit=1)[0]
             )
-        except KeyError:
-            log.debug("Malformed vod info")
-            return []
 
-        return [ContentURIs(vod_url, vod_caption_url)]
+            return [ContentURIs(vod_url, vod_caption_url)]
+        except Exception:
+            logging.exception("Failed to determine content URIs with exception:")
+            return []
 
 
 def get_events(
