@@ -326,9 +326,15 @@ class AnnArborScraper(LegistarScraper):
                 vod_info = json.load(resp)
 
             vod_url = vod_info["vod"]["url"]
-            vod_caption_url = "{}/captions.vtt".format(
-                vod_url.rsplit("/", maxsplit=1)[0]
-            )
+            # XXX skip captions for now because webvtt barfs on the
+            # format I've previously hacked around this with some
+            # preprocessing, but perhaps I should try to come up with
+            # a proper patch for webvtt itself
+            
+            #vod_caption_url = "{}/captions.vtt".format(
+            #    vod_url.rsplit("/", maxsplit=1)[0]
+            #)
+            vod_caption_url = None
 
             return [ContentURIs(vod_url, vod_caption_url)]
         except Exception:
