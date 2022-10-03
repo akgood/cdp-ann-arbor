@@ -1,2 +1,0 @@
-(this["webpackJsonpcdp-ann-arbor"]=this["webpackJsonpcdp-ann-arbor"]||[]).push([[0],{200:function(n,e){},88:function(n,e,o){"use strict";o.r(e);o(0);var r=o(25),t=o.n(r),i=o(63),c=(o(214),o(54));t.a.render(Object(c.jsx)("div",{children:Object(c.jsx)(i.AppConfigProvider,{appConfig:{firebaseConfig:{options:{projectId:"cdp-ann-arbor-mytqnzzk"},settings:{}},municipality:{name:"Ann Arbor",footerLinksSections:[]}},children:Object(c.jsx)(i.App,{})})}),document.getElementById("root"))}},[[88,1,2]]]);
-//# sourceMappingURL=main.c1d03751.chunk.js.map
